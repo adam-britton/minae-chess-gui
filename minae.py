@@ -156,6 +156,7 @@ class BoardView(QGraphicsView):
 
 
 class GameStateView(QGraphicsView):
+    """A widget displaying a view of the chess game state."""
 
     def __init__(self):
         QGraphicsView.__init__(self)
@@ -169,7 +170,8 @@ class GameStateView(QGraphicsView):
 
     @Slot(dict)
     def update(self, game_state):
-        """Updates the game state view with the provided values.
+        """
+        Updates the game state view with the provided values.
 
         :param game_state: Dictionary containing {topic:value} pairs
         """
@@ -181,6 +183,7 @@ class GameStateView(QGraphicsView):
 
 
 class MoveHistoryView(QGraphicsView):
+    """A widget containing a view of the move history."""
 
     def __init__(self):
         QGraphicsView.__init__(self)
@@ -195,25 +198,33 @@ class MoveHistoryView(QGraphicsView):
 
     @Slot(str)
     def add_half_move(self, half_move):
+        """
+        Adds a half move to the move history.
 
+        :param half_move: String of the half move
+        """
         self.move_history += [half_move]
         self.update()
 
     @Slot()
     def remove_half_move(self):
-
+        """Removes the most recent half move from the move history."""
         if len(self.move_history) > 0:
             self.move_history.pop()
             self.update()
 
     @Slot(list)
     def set_history(self, history):
+        """
+        Sets the move history according to a list of moves.
 
+        :param history: List of half moves
+        """
         self.move_history = history
         self.update()
 
     def update(self):
-
+        """Updates the view with the move history."""
         text = ''
         half_move_number = 1
         full_move_number = 1
@@ -230,6 +241,7 @@ class MoveHistoryView(QGraphicsView):
 
 
 class IOThread(QThread):
+    """Collects and validates input data, and updates views."""
 
     FEN_REGEX = (
         r'([PRNBQKprnbqk1-8]{1,8})/'  # Group 1:  Rank 8
@@ -272,7 +284,14 @@ class IOThread(QThread):
         self.close_app_signal.connect(close_app_slot, Qt.QueuedConnection)
 
     def __is_minimally_valid_fen(self, fen_match):
+        """
+        Checks if a FEN is minimally valid, that is, valid enough to display.
 
+        This method does not necessarily determine whether the position is
+        fully legal.
+
+        :param fen_match Match object for the FEN
+        """
         # For the ranks (groups 1-8), validate that:
         # - There are never two numbers consecutively
         # - The sum of pieces and empty squares adds to 8
@@ -315,7 +334,12 @@ class IOThread(QThread):
         return True
 
     def __fen_to_populated_squares(self, fen_match):
+        """
+        Given a FEN Match object, returns a dictionary of populated squares.
 
+        :param fen_match Match object for the FEN
+        :return: Dictionary in format {pos:piece}, e.g. {'e2':'P'}
+        """
         populated_squares = {}
         for g in range(1, 9):
             file = 'a'
@@ -331,7 +355,7 @@ class IOThread(QThread):
         return populated_squares
 
     def run(self):
-
+        """Executes the IO thread."""
         while True:
             console_in = input('chess$ ')
             try:
@@ -374,7 +398,7 @@ class IOThread(QThread):
 
 def main(argv):
 
-    print('Let\'s play chess!')
+    print("Let's play chess!")
     app = QApplication()
     main_window = QMainWindow()
     board_view = BoardView()
