@@ -28,8 +28,8 @@ from PySide2.QtWidgets import (QApplication, QDockWidget,
                                QGraphicsView, QMainWindow)
 
 
-class BoardView(QGraphicsView):
-    """A widget representing a graphical view of a chess board."""
+class BoardScene(QGraphicsScene):
+    """A chess board scene."""
 
     SQUARE_WIDTH = 45
     BOARD_WIDTH = SQUARE_WIDTH * 8
@@ -53,13 +53,8 @@ class BoardView(QGraphicsView):
     }
 
     def __init__(self):
-        QGraphicsView.__init__(self)
-        self.setMinimumSize(self.BOARD_WIDTH, self.BOARD_WIDTH)
-        self.setMaximumSize(self.BOARD_WIDTH, self.BOARD_WIDTH)
-        self.scene = QGraphicsScene()
-        self.setScene(self.scene)
+        QGraphicsScene.__init__(self)
         self.__add_squares()
-        self.show()
         self.piece_items = []
         self.highlighted_square_items = []
 
@@ -72,7 +67,7 @@ class BoardView(QGraphicsView):
                     self.IMAGES['l'] if self.__is_light_square(file + rank)
                     else self.IMAGES['d'])
                 square.setPos(x, y)
-                self.scene.addItem(square)
+                self.addItem(square)
 
     def __is_light_square(self, pos):
         """
@@ -113,7 +108,6 @@ class BoardView(QGraphicsView):
 
         return (x, y)
 
-    @Slot(dict)
     def set_position(self, populated_squares):
         """
         Sets the board view to a new position. Discards any square highlights.
@@ -122,19 +116,58 @@ class BoardView(QGraphicsView):
                                   {pos:piece}, e.g. {'e2':'P', ...}
         """
         for item in self.highlighted_square_items:
-            self.scene.removeItem(item)
+            self.removeItem(item)
         self.highlighted_square_items = []
 
         for item in self.piece_items:
-            self.scene.removeItem(item)
+            self.removeItem(item)
         self.piece_items = []
 
         for pos in populated_squares:
             (x, y) = self.__pos_to_x_y(pos)
             piece = QGraphicsSvgItem(self.IMAGES[populated_squares[pos]])
             piece.setPos(x, y)
-            self.scene.addItem(piece)
+            self.addItem(piece)
             self.piece_items += [piece]
+
+    def set_highlighted_squares(self, highlighted_squares):
+        """
+        Sets the highlighted squares on the board.
+
+        :param highlighted_squares: List of highlighted squares
+        """
+        for item in self.highlighted_square_items:
+            self.removeItem(item)
+        self.highlighted_square_items = []
+
+        for pos in highlighted_squares:
+            (x, y) = self.__pos_to_x_y(pos)
+            square = QGraphicsSvgItem(self.IMAGES['h'])
+            square.setPos(x, y)
+            self.addItem(square)
+            self.highlighted_square_items += [square]
+
+
+class BoardView(QGraphicsView):
+    """A widget representing a graphical view of a chess board."""
+
+    def __init__(self):
+        QGraphicsView.__init__(self)
+        self.setMinimumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
+        self.setMaximumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
+        self.scene = BoardScene()
+        self.setScene(self.scene)
+        self.show()
+
+    @Slot(dict)
+    def set_position(self, populated_squares):
+        """
+        Sets the board view to a new position. Discards any square highlights.
+
+        :param populated_squares: Dictionary of non-empty squares, in format
+                                  {pos:piece}, e.g. {'e2':'P', ...}
+        """
+        self.scene.set_position(populated_squares)
 
     @Slot(list)
     def set_highlighted_squares(self, highlighted_squares):
@@ -143,16 +176,7 @@ class BoardView(QGraphicsView):
 
         :param highlighted_squares: List of highlighted squares
         """
-        for item in self.highlighted_square_items:
-            self.scene.removeItem(item)
-        self.highlighted_square_items = []
-
-        for pos in highlighted_squares:
-            (x, y) = self.__pos_to_x_y(pos)
-            square = QGraphicsSvgItem(self.IMAGES['h'])
-            square.setPos(x, y)
-            self.scene.addItem(square)
-            self.highlighted_square_items += [square]
+        self.scene.set_highlighted_squares(highlighted_squares)
 
 
 class GameStateView(QGraphicsView):
