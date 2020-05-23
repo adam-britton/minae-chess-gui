@@ -21,7 +21,7 @@ import json
 import re
 import sys
 
-from PySide2.QtCore import Qt, QThread, Signal, Slot
+from PySide2.QtCore import QPointF, Qt, QThread, Signal, Slot
 from PySide2.QtSvg import QGraphicsSvgItem
 from PySide2.QtWidgets import (QApplication, QDockWidget,
                                QGraphicsScene, QGraphicsSimpleTextItem,
@@ -57,6 +57,7 @@ class BoardScene(QGraphicsScene):
         self.__add_squares()
         self.piece_items = []
         self.highlighted_square_items = []
+        self.legal_moves = {}
 
     def __add_squares(self):
         """Adds initial squares to the board view."""
@@ -108,13 +109,20 @@ class BoardScene(QGraphicsScene):
 
         return (x, y)
 
-    def set_position(self, populated_squares):
+    def __x_y_to_pos(self, x, y):
         """
-        Sets the board view to a new position. Discards any square highlights.
+        Converts a scene coordinate position to a chess position.
 
-        :param populated_squares: Dictionary of non-empty squares, in format
-                                  {pos:piece}, e.g. {'e2':'P', ...}
+        :param x: x coordinate (float)
+        :param y: y coordinate (float)
+        :return: String of chess position
         """
+        file = chr(ord('a') + (int(x) // self.SQUARE_WIDTH))
+        rank = chr(ord('8') - (int(y) // self.SQUARE_WIDTH))
+        return file + rank
+
+    def set_position(self, populated_squares):
+        """See BoardView.set_position()."""
         for item in self.highlighted_square_items:
             self.removeItem(item)
         self.highlighted_square_items = []
@@ -130,22 +138,39 @@ class BoardScene(QGraphicsScene):
             self.addItem(piece)
             self.piece_items += [piece]
 
-    def set_highlighted_squares(self, highlighted_squares):
-        """
-        Sets the highlighted squares on the board.
+    def set_legal_moves(self, legal_moves):
+        """See BoardView.set_legal_moves()."""
+        self.legal_moves = legal_moves
 
-        :param highlighted_squares: List of highlighted squares
+    def highlight_squares(self, squares):
+        """
+        Highlighted a list of squares on the board.
+
+        :param squares: List of squares to highlight.
         """
         for item in self.highlighted_square_items:
             self.removeItem(item)
         self.highlighted_square_items = []
 
-        for pos in highlighted_squares:
+        for pos in squares:
             (x, y) = self.__pos_to_x_y(pos)
-            square = QGraphicsSvgItem(self.IMAGES['h'])
-            square.setPos(x, y)
-            self.addItem(square)
-            self.highlighted_square_items += [square]
+            square_item = QGraphicsSvgItem(self.IMAGES['h'])
+            square_item.setPos(x, y)
+            self.addItem(square_item)
+            self.highlighted_square_items += [square_item]
+
+    def mousePressEvent(self, event):
+        """
+        Handles a mouse press event on the scene.
+
+        :param event: QGraphicsSceneMouseEvent
+        """
+        pos = self.__x_y_to_pos(event.scenePos().x(), event.scenePos().y())
+        try:
+            squares = list(self.legal_moves[pos]) + [pos]
+            self.highlight_squares(squares)
+        except KeyError:
+            self.highlight_squares([])
 
 
 class BoardView(QGraphicsView):
@@ -169,14 +194,16 @@ class BoardView(QGraphicsView):
         """
         self.scene.set_position(populated_squares)
 
-    @Slot(list)
-    def set_highlighted_squares(self, highlighted_squares):
+    @Slot(dict)
+    def set_legal_moves(self, legal_moves):
         """
-        Sets the highlighted squares on the board.
+        Sets the legals moves for the board position. This will determine
+        which squares get highlighted as a result of mouse clicks.
 
-        :param highlighted_squares: List of highlighted squares
+        :param legal_moves: Dictionary with entries in form
+                            {src0:[target0, target1, ...], src1[target0, ...],}
         """
-        self.scene.set_highlighted_squares(highlighted_squares)
+        self.scene.set_legal_moves(legal_moves)
 
 
 class GameStateView(QGraphicsView):
@@ -286,21 +313,21 @@ class IOThread(QThread):
     )
 
     set_position_signal = Signal(dict)
-    set_highlighted_squares_signal = Signal(list)
+    set_legal_moves_signal = Signal(dict)
     update_game_state_signal = Signal(dict)
     add_half_move_signal = Signal(str)
     remove_half_move_signal = Signal()
     set_history_signal = Signal(list)
     close_app_signal = Signal()
 
-    def __init__(self, set_position_slot, set_highlighted_squares_slot,
+    def __init__(self, set_position_slot, set_legal_moves_slot,
                  update_game_state_slot, add_half_move_slot,
                  remove_half_move_slot, set_history_slot, close_app_slot):
         QThread.__init__(self)
         self.fen_parser = re.compile(self.FEN_REGEX)
         self.set_position_signal.connect(set_position_slot)
-        self.set_highlighted_squares_signal.connect(
-            set_highlighted_squares_slot)
+        self.set_legal_moves_signal.connect(
+            set_legal_moves_slot)
         self.update_game_state_signal.connect(update_game_state_slot)
         self.add_half_move_signal.connect(add_half_move_slot)
         self.remove_half_move_signal.connect(remove_half_move_slot)
@@ -388,11 +415,12 @@ class IOThread(QThread):
                 print(err)
                 continue
 
-            for cmd in cmds:
+            for cmd, val in cmds.items():
+
                 if cmd == 'set fen':
-                    fen_match = self.fen_parser.match(cmds[cmd])
+                    fen_match = self.fen_parser.match(val)
                     if fen_match \
-                            and fen_match.group() == cmds[cmd] \
+                            and fen_match.group() == val \
                             and self.__is_minimally_valid_fen(fen_match):
                         populated_squares = \
                             self.__fen_to_populated_squares(fen_match)
@@ -404,18 +432,35 @@ class IOThread(QThread):
                             'Half move clock': fen_match.group(14),
                             'Full move number': fen_match.group(15),
                         })
+
                 elif cmd == 'append history':
-                    for half_move in cmds[cmd]:
+                    for half_move in val:
                         self.add_half_move_signal.emit(half_move)
+
                 elif cmd == 'undo history':
                     self.remove_half_move_signal.emit()
+
                 elif cmd == 'set history':
-                    self.set_history_signal.emit(cmds[cmd])
+                    self.set_history_signal.emit(val)
+
                 elif cmd == 'set legal moves':
-                    pass
+                    legal_moves = {}
+                    for move in val:
+                        move_match = re.compile(
+                            r'([a-h][1-8])([a-h][1-8])').match(move)
+                        if not move_match or move_match.group() != move:
+                            print(f'Unrecognized move: {move}')
+                            continue
+                        if move_match.group(1) in legal_moves:
+                            legal_moves[move_match.group(1)].add(move_match.group(2))
+                        else:
+                            legal_moves[move_match.group(1)] = {move_match.group(2)}
+                    self.set_legal_moves_signal.emit(legal_moves)
+
                 elif cmd == 'quit':
                     self.close_app_signal.emit()
                     return
+
                 else:
                     print('Error: Unrecognized command')
 
@@ -438,7 +483,7 @@ def main(argv):
     main_window.show()
     iothread = IOThread(
         board_view.set_position,
-        board_view.set_highlighted_squares,
+        board_view.set_legal_moves,
         game_state_view.update,
         move_history_view.add_half_move,
         move_history_view.remove_half_move,
