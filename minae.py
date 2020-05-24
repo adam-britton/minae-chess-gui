@@ -408,7 +408,7 @@ class IOThread(QThread):
     def run(self):
         """Executes the IO thread."""
         while True:
-            console_in = input('chess$ ')
+            console_in = input('minae-chess-gui$ ')
             try:
                 cmds = json.loads(console_in)
             except json.JSONDecodeError as err:
