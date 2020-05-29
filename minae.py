@@ -25,7 +25,7 @@ from PySide2.QtCore import QPointF, Qt, QThread, Signal, Slot
 from PySide2.QtSvg import QGraphicsSvgItem
 from PySide2.QtWidgets import (QApplication, QDockWidget,
                                QGraphicsScene, QGraphicsSimpleTextItem,
-                               QGraphicsView, QMainWindow)
+                               QGraphicsView, QMainWindow, QStatusBar)
 
 
 class BoardScene(QGraphicsScene):
@@ -179,7 +179,7 @@ class BoardView(QGraphicsView):
     def __init__(self):
         QGraphicsView.__init__(self)
         self.setMinimumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
-        self.setMaximumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
+        # self.setMaximumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
         self.scene = BoardScene()
         self.setScene(self.scene)
         self.show()
@@ -239,7 +239,7 @@ class MoveHistoryView(QGraphicsView):
     def __init__(self):
         QGraphicsView.__init__(self)
         self.setMinimumWidth(180)
-        self.setMaximumWidth(180)
+        # self.setMaximumWidth(180)
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
         self.text_item = QGraphicsSimpleTextItem()
@@ -314,21 +314,21 @@ class IOThread(QThread):
 
     set_position_signal = Signal(dict)
     set_legal_moves_signal = Signal(dict)
-    update_game_state_signal = Signal(dict)
     add_half_move_signal = Signal(str)
     remove_half_move_signal = Signal()
     set_history_signal = Signal(list)
     close_app_signal = Signal()
 
     def __init__(self, set_position_slot, set_legal_moves_slot,
-                 update_game_state_slot, add_half_move_slot,
+                 status_bar, add_half_move_slot,
                  remove_half_move_slot, set_history_slot, close_app_slot):
         QThread.__init__(self)
         self.fen_parser = re.compile(self.FEN_REGEX)
         self.set_position_signal.connect(set_position_slot)
         self.set_legal_moves_signal.connect(
             set_legal_moves_slot)
-        self.update_game_state_signal.connect(update_game_state_slot)
+        self.status_bar = status_bar
+        self.status_bar.messageChanged.connect(self.status_bar.showMessage)
         self.add_half_move_signal.connect(add_half_move_slot)
         self.remove_half_move_signal.connect(remove_half_move_slot)
         self.set_history_signal.connect(set_history_slot)
@@ -425,13 +425,13 @@ class IOThread(QThread):
                         populated_squares = \
                             self.__fen_to_populated_squares(fen_match)
                         self.set_position_signal.emit(populated_squares)
-                        self.update_game_state_signal.emit({
-                            'Turn': fen_match.group(9),
-                            'Castling availability': fen_match.group(10),
-                            'En-passant target': fen_match.group(11),
-                            'Half move clock': fen_match.group(14),
-                            'Full move number': fen_match.group(15),
-                        })
+                        self.status_bar.messageChanged.emit(
+                            f'{fen_match.group(9)} '
+                            f'{fen_match.group(10)} '
+                            f'{fen_match.group(11)} '
+                            f'{fen_match.group(14)} '
+                            f'{fen_match.group(15)}'
+                        )
 
                 elif cmd == 'append history':
                     for half_move in val:
@@ -470,21 +470,23 @@ def main(argv):
     print("Let's play chess!")
     app = QApplication()
     main_window = QMainWindow()
+    status_bar = QStatusBar()
+    main_window.setStatusBar(status_bar)
     board_view = BoardView()
-    game_state_view = GameStateView()
+    # game_state_view = GameStateView()
     move_history_view = MoveHistoryView()
     main_window.setCentralWidget(board_view)
-    game_state_dock = QDockWidget('Game State')
-    game_state_dock.setWidget(game_state_view)
+    # game_state_dock = QDockWidget('Game State')
+    # game_state_dock.setWidget(game_state_view)
     move_history_dock = QDockWidget('Move History')
     move_history_dock.setWidget(move_history_view)
-    main_window.addDockWidget(Qt.RightDockWidgetArea, game_state_dock)
+    # main_window.addDockWidget(Qt.RightDockWidgetArea, game_state_dock)
     main_window.addDockWidget(Qt.RightDockWidgetArea, move_history_dock)
     main_window.show()
     iothread = IOThread(
         board_view.set_position,
         board_view.set_legal_moves,
-        game_state_view.update,
+        status_bar,
         move_history_view.add_half_move,
         move_history_view.remove_half_move,
         move_history_view.set_history,
