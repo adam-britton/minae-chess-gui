@@ -58,6 +58,7 @@ class BoardScene(QGraphicsScene):
         self.piece_items = []
         self.highlighted_square_items = []
         self.legal_moves = {}
+        self.selected_pos = None
 
     def __add_squares(self):
         """Adds initial squares to the board view."""
@@ -166,11 +167,25 @@ class BoardScene(QGraphicsScene):
         :param event: QGraphicsSceneMouseEvent
         """
         pos = self.__x_y_to_pos(event.scenePos().x(), event.scenePos().y())
-        try:
-            squares = list(self.legal_moves[pos]) + [pos]
-            self.highlight_squares(squares)
-        except KeyError:
-            self.highlight_squares([])
+
+        if self.selected_pos is not None:
+            if pos == self.selected_pos:
+                self.selected_pos = None
+                self.highlight_squares([])
+            elif pos in self.legal_moves[self.selected_pos]:
+                print(f'Moved from {self.selected_pos} to {pos}')
+                self.selected_pos = None
+                self.highlight_squares([])
+            elif pos in self.legal_moves:
+                self.selected_pos = pos
+                self.highlight_squares(list(self.legal_moves[pos]) + [pos])
+            else:
+                self.selected_pos = None
+                self.highlight_squares([])
+
+        elif pos in self.legal_moves:
+            self.selected_pos = pos
+            self.highlight_squares(list(self.legal_moves[pos]) + [pos])
 
 
 class BoardView(QGraphicsView):
