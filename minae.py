@@ -467,9 +467,11 @@ class IOThread(QThread):
                             print(f'Unrecognized move: {move}')
                             continue
                         if move_match.group(1) in legal_moves:
-                            legal_moves[move_match.group(1)].add(move_match.group(2))
+                            legal_moves[move_match.group(1)] \
+                                .add(move_match.group(2))
                         else:
-                            legal_moves[move_match.group(1)] = {move_match.group(2)}
+                            legal_moves[move_match.group(1)] \
+                                = {move_match.group(2)}
                     self.set_legal_moves_signal.emit(legal_moves)
 
                 elif cmd == 'quit':
