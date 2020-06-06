@@ -81,8 +81,8 @@ class BoardScene(QGraphicsScene):
         :return: True of square is light, false if square is dark
         """
         pos_match = re.compile(r'([a-h])([1-8])').match(pos)
-        assert(pos_match)
-        assert(pos_match.group() == pos)
+        if not pos_match or pos_match.group() != pos:
+            raise ValueError
 
         if pos_match.group(1) in 'aceg':
             return int(pos_match.group(2)) % 2 == 0
@@ -100,8 +100,8 @@ class BoardScene(QGraphicsScene):
         :return: Tuple containing (x, y) coordinates for the position
         """
         pos_match = re.compile(r'([a-h])([1-8])').match(pos)
-        assert(pos_match)
-        assert(pos_match.group() == pos)
+        if not pos_match or pos_match.group() != pos:
+            raise ValueError
 
         x = self.SQUARE_WIDTH * (ord(pos_match.group(1)) - ord('a'))
         y = self.BOARD_WIDTH \
@@ -155,10 +155,10 @@ class BoardScene(QGraphicsScene):
 
         for pos in squares:
             (x, y) = self.__pos_to_x_y(pos)
-            square_item = QGraphicsSvgItem(self.IMAGES['h'])
-            square_item.setPos(x, y)
-            self.addItem(square_item)
-            self.highlighted_square_items += [square_item]
+            highlighted_square_item = QGraphicsSvgItem(self.IMAGES['h'])
+            highlighted_square_item.setPos(x, y)
+            self.addItem(highlighted_square_item)
+            self.highlighted_square_items += [highlighted_square_item]
 
     def mousePressEvent(self, event):
         """
