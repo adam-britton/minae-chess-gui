@@ -23,9 +23,9 @@ import sys
 
 from PySide2.QtCore import QPointF, Qt, QThread, Signal, Slot
 from PySide2.QtSvg import QGraphicsSvgItem
-from PySide2.QtWidgets import (QApplication, QDockWidget,
+from PySide2.QtWidgets import (QAction, QApplication, QDockWidget,
                                QGraphicsScene, QGraphicsSimpleTextItem,
-                               QGraphicsView, QMainWindow)
+                               QGraphicsView, QMainWindow, QMenuBar)
 
 
 class BoardScene(QGraphicsScene):
@@ -487,14 +487,21 @@ def main(argv):
     print("Let's play chess!")
     app = QApplication()
     main_window = QMainWindow()
+    menu_bar = QMenuBar()
+    minae_menu = menu_bar.addMenu('Minae')
+    main_window.setMenuBar(menu_bar)
     board_view = BoardView()
     game_state_view = GameStateView()
     move_history_view = MoveHistoryView()
     main_window.setCentralWidget(board_view)
     game_state_dock = QDockWidget('Game State')
     game_state_dock.setWidget(game_state_view)
+    game_state_action = game_state_dock.toggleViewAction()
+    minae_menu.addAction(game_state_action)
     move_history_dock = QDockWidget('Move History')
     move_history_dock.setWidget(move_history_view)
+    move_history_action = move_history_dock.toggleViewAction()
+    minae_menu.addAction(move_history_action)
     main_window.addDockWidget(Qt.RightDockWidgetArea, game_state_dock)
     main_window.addDockWidget(Qt.RightDockWidgetArea, move_history_dock)
     main_window.show()
