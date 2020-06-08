@@ -25,7 +25,8 @@ from PySide2.QtCore import QPointF, Qt, QThread, Signal, Slot
 from PySide2.QtSvg import QGraphicsSvgItem
 from PySide2.QtWidgets import (QAction, QApplication, QDockWidget,
                                QGraphicsScene, QGraphicsSimpleTextItem,
-                               QGraphicsView, QMainWindow, QMenuBar)
+                               QGraphicsView, QMainWindow, QMenuBar,
+                               QStatusBar)
 
 
 class BoardScene(QGraphicsScene):
@@ -191,8 +192,8 @@ class BoardScene(QGraphicsScene):
 class BoardView(QGraphicsView):
     """A widget representing a graphical view of a chess board."""
 
-    def __init__(self):
-        QGraphicsView.__init__(self)
+    def __init__(self, parent):
+        QGraphicsView.__init__(self, parent)
         self.setMinimumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
         self.setMaximumSize(BoardScene.BOARD_WIDTH, BoardScene.BOARD_WIDTH)
         self.scene = BoardScene()
@@ -224,8 +225,8 @@ class BoardView(QGraphicsView):
 class GameStateView(QGraphicsView):
     """A widget displaying a view of the chess game state."""
 
-    def __init__(self):
-        QGraphicsView.__init__(self)
+    def __init__(self, parent):
+        QGraphicsView.__init__(self, parent)
         self.setMinimumSize(180, 115)
         self.setMaximumSize(180, 115)
         self.scene = QGraphicsScene()
@@ -251,8 +252,8 @@ class GameStateView(QGraphicsView):
 class MoveHistoryView(QGraphicsView):
     """A widget containing a view of the move history."""
 
-    def __init__(self):
-        QGraphicsView.__init__(self)
+    def __init__(self, parent):
+        QGraphicsView.__init__(self, parent)
         self.setMinimumWidth(180)
         self.setMaximumWidth(180)
         self.scene = QGraphicsScene()
@@ -482,38 +483,81 @@ class IOThread(QThread):
                     print('Error: Unrecognized command')
 
 
+
+class MainWindow(QMainWindow):
+
+    """Main window for the application."""
+    def __init__(self):
+        QMainWindow.__init__(self)
+
+        # First initialize the underlying views
+        self.board_view = BoardView(self)
+        self.game_state_view = GameStateView(self)
+        self.move_history_view = MoveHistoryView(self)
+
+        # Next initialize the docks
+        self.game_state_dock = self.add_dock(
+            'GameState',
+            self.game_state_view,
+            hidden=True
+        )
+        self.move_history_dock = self.add_dock(
+            'Move History',
+            self.move_history_view,
+            hidden=True
+        )
+
+        # Next initialize the menu and status bars
+        self.menu_bar = self.add_menu_bar({
+            'Minae': [
+                self.game_state_dock.toggleViewAction(),
+                self.move_history_dock.toggleViewAction(),
+            ],
+        })
+        self.status_bar = QStatusBar(self)
+
+        # Finally tie it all together
+        self.setCentralWidget(self.board_view)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.game_state_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.move_history_dock)
+        self.setMenuBar(self.menu_bar)
+        self.setStatusBar(self.status_bar)
+        self.show()
+
+    def closeEvent(self, event):
+        """Handle closing of the main window."""
+        event.accept()
+
+    def add_dock(self, title, widget, hidden=True):
+        """Adds the move history dock to the main window."""
+        dock = QDockWidget(title, self)
+        dock.setWidget(widget)
+        if hidden:
+            dock.hide()
+        return dock
+
+    def add_menu_bar(self, menus):
+        """Adds the menu bar to the main window."""
+        menu_bar = QMenuBar(self)
+        for menu, actions in menus.items():
+            menu = menu_bar.addMenu(menu)
+            for action in actions:
+                menu.addAction(action)
+        return menu_bar
+
+
 def main(argv):
 
-    print("Let's play chess!")
+    print("Welcome to Minae Chess GUI!")
     app = QApplication()
-    main_window = QMainWindow()
-    menu_bar = QMenuBar()
-    minae_menu = menu_bar.addMenu('Minae')
-    main_window.setMenuBar(menu_bar)
-    board_view = BoardView()
-    game_state_view = GameStateView()
-    move_history_view = MoveHistoryView()
-    main_window.setCentralWidget(board_view)
-    game_state_dock = QDockWidget('Game State')
-    game_state_dock.setWidget(game_state_view)
-    game_state_dock.hide()
-    game_state_action = game_state_dock.toggleViewAction()
-    minae_menu.addAction(game_state_action)
-    move_history_dock = QDockWidget('Move History')
-    move_history_dock.setWidget(move_history_view)
-    move_history_dock.hide()
-    move_history_action = move_history_dock.toggleViewAction()
-    minae_menu.addAction(move_history_action)
-    main_window.addDockWidget(Qt.RightDockWidgetArea, game_state_dock)
-    main_window.addDockWidget(Qt.RightDockWidgetArea, move_history_dock)
-    main_window.show()
+    main_window = MainWindow()
     iothread = IOThread(
-        board_view.set_position,
-        board_view.set_legal_moves,
-        game_state_view.update,
-        move_history_view.add_half_move,
-        move_history_view.remove_half_move,
-        move_history_view.set_history,
+        main_window.board_view.set_position,
+        main_window.board_view.set_legal_moves,
+        main_window.game_state_view.update,
+        main_window.move_history_view.add_half_move,
+        main_window.move_history_view.remove_half_move,
+        main_window.move_history_view.set_history,
         app.quit
     )
     iothread.start()
