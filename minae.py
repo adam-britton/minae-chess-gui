@@ -63,8 +63,8 @@ class BoardScene(QGraphicsScene):
 
     def __add_squares(self):
         """Adds initial squares to the board view."""
-        for file in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']:
-            for rank in ['1', '2', '3', '4', '5', '6', '7', '8']:
+        for file in 'abcdefgh':
+            for rank in '12345678':
                 (x, y) = self.__pos_to_x_y(file + rank)
                 square = QGraphicsSvgItem(
                     self.IMAGES['l'] if self.__is_light_square(file + rank)
@@ -176,6 +176,7 @@ class BoardScene(QGraphicsScene):
             elif pos in self.legal_moves[self.selected_pos]:
                 print(f'Moved from {self.selected_pos} to {pos}')
                 self.selected_pos = None
+                self.legal_moves = {}
                 self.highlight_squares([])
             elif pos in self.legal_moves:
                 self.selected_pos = pos
@@ -200,7 +201,6 @@ class BoardView(QGraphicsView):
         self.setScene(self.scene)
         self.show()
 
-    @Slot(dict)
     def set_position(self, populated_squares):
         """
         Sets the board view to a new position. Discards any square highlights.
@@ -210,7 +210,6 @@ class BoardView(QGraphicsView):
         """
         self.scene.set_position(populated_squares)
 
-    @Slot(dict)
     def set_legal_moves(self, legal_moves):
         """
         Sets the legals moves for the board position. This will determine
@@ -235,8 +234,7 @@ class GameStateView(QGraphicsView):
         self.scene.addItem(self.text_item)
         self.show()
 
-    @Slot(dict)
-    def update(self, game_state):
+    def set_game_state(self, game_state):
         """
         Updates the game state view with the provided values.
 
@@ -261,41 +259,17 @@ class MoveHistoryView(QGraphicsView):
         self.text_item = QGraphicsSimpleTextItem()
         self.scene.addItem(self.text_item)
         self.show()
-        self.move_history = []
 
-    @Slot(str)
-    def add_half_move(self, half_move):
-        """
-        Adds a half move to the move history.
-
-        :param half_move: String of the half move
-        """
-        self.move_history += [half_move]
-        self.update()
-
-    @Slot()
-    def remove_half_move(self):
-        """Removes the most recent half move from the move history."""
-        if len(self.move_history) > 0:
-            self.move_history.pop()
-            self.update()
-
-    @Slot(list)
-    def set_history(self, history):
+    def set_move_history(self, move_history):
         """
         Sets the move history according to a list of moves.
 
-        :param history: List of half moves
+        :param move_history: List of half moves
         """
-        self.move_history = history
-        self.update()
-
-    def update(self):
-        """Updates the view with the move history."""
         text = ''
         half_move_number = 1
         full_move_number = 1
-        for half_move in self.move_history:
+        for half_move in move_history:
             if half_move_number % 2 == 1:
                 text += str(full_move_number) + '. ' + half_move
                 half_move_number += 1
@@ -330,25 +304,14 @@ class IOThread(QThread):
 
     set_position_signal = Signal(dict)
     set_legal_moves_signal = Signal(dict)
-    update_game_state_signal = Signal(dict)
-    add_half_move_signal = Signal(str)
-    remove_half_move_signal = Signal()
-    set_history_signal = Signal(list)
-    close_app_signal = Signal()
+    set_game_state_signal = Signal(dict)
+    set_move_history_signal = Signal(list)
+    quit_app_signal = Signal()
 
-    def __init__(self, set_position_slot, set_legal_moves_slot,
-                 update_game_state_slot, add_half_move_slot,
-                 remove_half_move_slot, set_history_slot, close_app_slot):
+    def __init__(self):
         QThread.__init__(self)
         self.fen_parser = re.compile(self.FEN_REGEX)
-        self.set_position_signal.connect(set_position_slot)
-        self.set_legal_moves_signal.connect(
-            set_legal_moves_slot)
-        self.update_game_state_signal.connect(update_game_state_slot)
-        self.add_half_move_signal.connect(add_half_move_slot)
-        self.remove_half_move_signal.connect(remove_half_move_slot)
-        self.set_history_signal.connect(set_history_slot)
-        self.close_app_signal.connect(close_app_slot, Qt.QueuedConnection)
+        self.move_history = []
 
     def __is_minimally_valid_fen(self, fen_match):
         """
@@ -441,7 +404,7 @@ class IOThread(QThread):
                         populated_squares = \
                             self.__fen_to_populated_squares(fen_match)
                         self.set_position_signal.emit(populated_squares)
-                        self.update_game_state_signal.emit({
+                        self.set_game_state_signal.emit({
                             'Turn': fen_match.group(9),
                             'Castling availability': fen_match.group(10),
                             'En-passant target': fen_match.group(11),
@@ -450,14 +413,17 @@ class IOThread(QThread):
                         })
 
                 elif cmd == 'append history':
-                    for half_move in val:
-                        self.add_half_move_signal.emit(half_move)
+                    self.move_history += val
+                    self.set_move_history_signal.emit(self.move_history)
 
                 elif cmd == 'undo history':
-                    self.remove_half_move_signal.emit()
+                    if len(self.move_history) > 0:
+                        self.move_history.pop()
+                        self.set_move_history_signal.emit(self.move_history)
 
                 elif cmd == 'set history':
-                    self.set_history_signal.emit(val)
+                    self.move_history = val
+                    self.set_move_history_signal.emit(self.move_history)
 
                 elif cmd == 'set legal moves':
                     legal_moves = {}
@@ -476,7 +442,7 @@ class IOThread(QThread):
                     self.set_legal_moves_signal.emit(legal_moves)
 
                 elif cmd == 'quit':
-                    self.close_app_signal.emit()
+                    self.quit_app_signal.emit()
                     return
 
                 else:
@@ -508,10 +474,13 @@ class MainWindow(QMainWindow):
         )
 
         # Next initialize the menu and status bars
+        self.undo_action = QAction('Undo', self)
+        self.undo_action.setDisabled(True)
         self.menu_bar = self.add_menu_bar({
             'Minae': [
                 self.game_state_dock.toggleViewAction(),
                 self.move_history_dock.toggleViewAction(),
+                self.undo_action,
             ],
         })
         self.status_bar = QStatusBar(self)
@@ -527,6 +496,44 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle closing of the main window."""
         event.accept()
+
+    @Slot(dict)
+    def set_position(self, populated_squares):
+        """
+        Sets to a new chess position.
+
+        :param populated_squares: Dictionary of non-empty squares, in format
+                                  {pos:piece}, e.g. {'e2':'P', ...}
+        """
+        self.board_view.set_position(populated_squares)
+
+    @Slot(dict)
+    def set_legal_moves(self, legal_moves):
+        """
+        Sets the legals moves.
+
+        :param legal_moves: Dictionary with entries in form
+            {src0:[target0, target1, ...], src1:[target0, ...],}
+        """
+        self.board_view.set_legal_moves(legal_moves)
+
+    @Slot(dict)
+    def set_game_state(self, game_state):
+        """
+        Sets the game state.
+
+        :param game_state: Dictionary containing {topic:value} pairs
+        """
+        self.game_state_view.set_game_state(game_state)
+
+    @Slot(list)
+    def set_move_history(self, move_history):
+        """
+        Sets the move history.
+
+        :param move_history: List of half moves
+        """
+        self.move_history_view.set_move_history(move_history)
 
     def add_dock(self, title, widget, hidden=True):
         """Adds the move history dock to the main window."""
@@ -546,22 +553,33 @@ class MainWindow(QMainWindow):
         return menu_bar
 
 
+class Minae:
+
+    def __init__(self):
+        self.app = QApplication()
+        self.main_window = MainWindow()
+        self.io_thread = IOThread()
+
+        self.io_thread.set_position_signal.connect(
+            self.main_window.set_position)
+        self.io_thread.set_legal_moves_signal.connect(
+            self.main_window.set_legal_moves)
+        self.io_thread.set_game_state_signal.connect(
+            self.main_window.set_game_state)
+        self.io_thread.set_move_history_signal.connect(
+            self.main_window.set_move_history)
+        self.io_thread.quit_app_signal.connect(
+            self.app.quit, Qt.QueuedConnection)
+
+    def start(self):
+        self.io_thread.start()
+        self.app.exec_()
+
+
 def main(argv):
 
-    print("Welcome to Minae Chess GUI!")
-    app = QApplication()
-    main_window = MainWindow()
-    iothread = IOThread(
-        main_window.board_view.set_position,
-        main_window.board_view.set_legal_moves,
-        main_window.game_state_view.update,
-        main_window.move_history_view.add_half_move,
-        main_window.move_history_view.remove_half_move,
-        main_window.move_history_view.set_history,
-        app.quit
-    )
-    iothread.start()
-    app.exec_()
+    minae = Minae()
+    minae.start()
 
 
 if __name__ == "__main__":
